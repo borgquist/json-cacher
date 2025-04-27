@@ -8,6 +8,7 @@ import shutil
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from logger_config import configure_logging
+from urllib.parse import urlparse
 
 # Configure logging with our central configuration
 logger = configure_logging("fetcher")
@@ -269,7 +270,21 @@ def fetch_and_cache(config, state):
             logger.error("No API endpoint configured. Please set ENDPOINT_URL in .env file.")
             return False
             
-        logger.info(f"Fetching new data from {api_endpoint}")
+        # Mask the API endpoint for logging by showing only domain or first part
+        masked_endpoint = api_endpoint
+        try:
+            parsed_url = urlparse(api_endpoint)
+            # Only show the domain part with path truncated
+            if parsed_url.netloc:
+                masked_endpoint = f"{parsed_url.scheme}://{parsed_url.netloc}/***"
+            else:
+                # If parsing fails, just show first part and mask the rest
+                masked_endpoint = api_endpoint.split("/")[0] + "/***"
+        except Exception:
+            # If any error occurs during masking, use basic truncation
+            masked_endpoint = api_endpoint[:20] + "..." if len(api_endpoint) > 20 else api_endpoint
+            
+        logger.info(f"Fetching new data from {masked_endpoint}")
         
         # Check if we have an API key for authentication
         headers = {}
@@ -317,7 +332,7 @@ def fetch_and_cache(config, state):
                     # Add metadata
                     data["_meta"] = {
                         "fetched_at": datetime.now().isoformat(),
-                        "source": api_endpoint,
+                        "source": masked_endpoint,
                         "status_code": response.status_code,
                         "cache_timestamp": datetime.now().isoformat(),
                         "changed": data_changed
