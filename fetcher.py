@@ -216,31 +216,38 @@ def extract_filtered_response(data, filter_pattern):
         return None
     
     try:
-        # Convert the data to a JSON string
+        # Convert the data to a JSON string for regex mode
         data_str = json.dumps(data)
         
-        # Check if it's a JSON path (contains dots but no regex special chars)
-        if '.' in filter_pattern and not any(c in filter_pattern for c in '[](){}*+?^$|\\.'):
-            # Handle as JSON path
-            path_parts = filter_pattern.split('.')
-            result = data
-            for part in path_parts:
-                if part in result:
-                    result = result[part]
-                else:
-                    return f"JSON path '{filter_pattern}' not found in response"
-            return f"{filter_pattern}: {json.dumps(result)}"
-        else:
-            # Handle as regex
+        # Try to use it as a JSON path first - simpler check
+        if '.' in filter_pattern:
             try:
-                pattern = re.compile(filter_pattern)
-                matches = pattern.findall(data_str)
-                if matches:
-                    return f"Regex matches for '{filter_pattern}': {matches}"
+                # Handle as JSON path
+                path_parts = filter_pattern.split('.')
+                result = data
+                for part in path_parts:
+                    if isinstance(result, dict) and part in result:
+                        result = result[part]
+                    else:
+                        # Try regex as fallback
+                        break
                 else:
-                    return f"No matches for regex '{filter_pattern}' in response"
-            except re.error:
-                return f"Invalid regex pattern: {filter_pattern}"
+                    # If we get here, we successfully followed the entire path
+                    return f"{filter_pattern}: {json.dumps(result)}"
+            except Exception:
+                # If JSON path fails, fall back to regex
+                pass
+        
+        # Handle as regex if JSON path didn't work
+        try:
+            pattern = re.compile(filter_pattern)
+            matches = pattern.findall(data_str)
+            if matches:
+                return f"Regex matches for '{filter_pattern}': {matches}"
+            else:
+                return f"No matches for regex '{filter_pattern}' in response"
+        except re.error:
+            return f"Invalid regex pattern: {filter_pattern}"
     except Exception as e:
         return f"Error extracting filtered response: {e}"
 
