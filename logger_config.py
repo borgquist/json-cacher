@@ -1,9 +1,10 @@
 import os
+import json
 import logging
 
 def configure_logging(service_name):
     """
-    Configure logging with support for environment variables to control log levels
+    Configure logging with support for configuration from config.json
     
     Args:
         service_name: Name of the service for the logger
@@ -11,8 +12,20 @@ def configure_logging(service_name):
     Returns:
         A configured logger instance
     """
-    # Get log level from environment variable or default to INFO
-    log_level_name = os.getenv("LOG_LEVEL", "INFO").upper()
+    # Default log level is INFO
+    log_level_name = "INFO"
+    
+    # Try to load log level from config.json
+    config_file = "config.json"
+    if os.path.exists(config_file):
+        try:
+            with open(config_file, 'r') as f:
+                config = json.load(f)
+                if "log_level" in config:
+                    log_level_name = config["log_level"].upper()
+        except Exception:
+            # If there's an error reading the config, use the default
+            pass
     
     # Validate log level
     valid_levels = {

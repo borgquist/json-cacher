@@ -5,11 +5,7 @@ import time
 from datetime import datetime
 from flask import Flask, jsonify, request, redirect
 from flask_cors import CORS
-from dotenv import load_dotenv
 from logger_config import configure_logging
-
-# Load environment variables from .env file
-load_dotenv()
 
 # Configure logging with our central configuration
 logger = configure_logging("api_server")
@@ -27,35 +23,43 @@ CORS(app)  # Enable CORS for all routes
 app.logger.disabled = True
 
 def load_config():
-    """Load configuration from config file and environment variables"""
+    """Load configuration from config.json"""
     # Start with a default config
     config = {
         "fetch_interval_seconds": 300,
         "rate_limit_enabled": True,
-        # We only use fetch_interval_seconds for rate limiting
+        "port": 8000,
+        "endpoint_url": "https://api.example.com/v1/data",
+        "api_description": "API",
+        "api_header_type": "bearer",
+        "test_mode": False,
+        "log_level": "INFO",
+        "log_response_filter": ""
     }
     
-    # If config.json exists, load non-sensitive settings from it
+    # If config.json exists, load settings from it
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, 'r') as f:
                 saved_config = json.load(f)
                 # Update config with saved values
                 config.update(saved_config)
+                logger.debug(f"Loaded configuration from {CONFIG_FILE}")
         except Exception as e:
             logger.error(f"Error loading config file: {e}")
+    else:
+        logger.warning(f"No {CONFIG_FILE} found. Using default configuration.")
+        # Create default config file
+        try:
+            with open(CONFIG_FILE, 'w') as f:
+                json.dump(config, f, indent=2)
+            logger.info(f"Created default config file at {CONFIG_FILE}")
+        except Exception as e:
+            logger.error(f"Error creating default config file: {e}")
     
-    # Load sensitive data directly from environment variables
-    # These won't be saved to config.json
-    if "ENDPOINT_URL" in os.environ:
-        config["api_endpoint"] = os.getenv("ENDPOINT_URL")
-    elif "api_endpoint" not in config:
-        config["api_endpoint"] = "https://api.example.com/v1/data"
-        
-    if "API_DESCRIPTION" in os.environ:
-        config["api_description"] = os.getenv("API_DESCRIPTION")
-    elif "api_description" not in config:
-        config["api_description"] = "API"
+    # For backwards compatibility, convert api_endpoint to endpoint_url if needed
+    if "api_endpoint" in config and "endpoint_url" not in config:
+        config["endpoint_url"] = config["api_endpoint"]
     
     return config
 
@@ -233,7 +237,7 @@ def get_status():
     
     # Get API description from config
     api_description = config.get("api_description", "API")
-    api_endpoint = config.get("api_endpoint", "")
+    api_endpoint = config.get("endpoint_url", "")
     
     status = {
         "version": "1.2.0",
@@ -310,8 +314,8 @@ def manage_config():
                 config['rate_limit_enabled'] = bool(update_data['rate_limit_enabled'])
             
             # Don't allow updating sensitive config via API
-            if 'api_endpoint' in update_data:
-                logger.warning(f"Client {client_ip} attempted to update api_endpoint - rejected for security")
+            if 'endpoint_url' in update_data:
+                logger.warning(f"Client {client_ip} attempted to update endpoint_url - rejected for security")
                 return jsonify({"error": "Updating API endpoint via API is not allowed for security reasons"}), 403
             
             if 'api_description' in update_data:
@@ -334,6 +338,7 @@ def manage_config():
             return jsonify({"error": f"Failed to update configuration: {str(e)}"}), 500
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 8000))
+    config = load_config()
+    port = config.get("port", 8000)
     logger.info(f"Starting API server on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False) 

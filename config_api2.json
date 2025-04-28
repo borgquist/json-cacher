@@ -1,0 +1,5 @@
+{
+  "fetch_interval_seconds": 120,
+  "rate_limit_enabled": true,
+  "port": 8001
+} 

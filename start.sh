@@ -76,28 +76,12 @@ if ! $PYTHON_CMD -c "import requests" 2>/dev/null || ! $PYTHON_CMD -c "import fl
     echo "Dependencies installed successfully!"
 fi
 
-# Create .env file if it doesn't exist and env.example does
-if [ ! -f "$SCRIPT_DIR/.env" ] && [ -f "$SCRIPT_DIR/env.example" ]; then
-    echo "Notice: .env file not found, creating from env.example template"
-    cp "$SCRIPT_DIR/env.example" "$SCRIPT_DIR/.env"
-    echo "Please edit .env file with your actual API credentials and settings"
-fi
-
 # Create config.json if it doesn't exist and config.example.json does
 if [ ! -f "$SCRIPT_DIR/config.json" ] && [ -f "$SCRIPT_DIR/config.example.json" ]; then
     echo "Notice: config.json file not found, creating from config.example.json template"
     cp "$SCRIPT_DIR/config.example.json" "$SCRIPT_DIR/config.json"
+    echo "Please edit config.json file with your actual API credentials and settings"
 fi
-
-# Environment variables with defaults
-export PORT=${PORT:-8001}  # Default port for API server
-export TEST_MODE=${TEST_MODE:-false}
-export LOG_LEVEL=${LOG_LEVEL:-INFO}  # Default log level
-
-echo "Configuration:"
-echo "- API server port: $PORT"
-echo "- Test mode: $TEST_MODE"
-echo "- Log level: $LOG_LEVEL"
 
 # Change to the script directory before running Python scripts
 cd "$SCRIPT_DIR"
@@ -111,7 +95,7 @@ FETCHER_PID=$!
 sleep 2
 
 # Start the API server
-echo "Starting api_server.py on port $PORT..."
+echo "Starting api_server.py..."
 $PYTHON_CMD "$SCRIPT_DIR/api_server.py"
 
 # If API server terminates, also kill the fetcher

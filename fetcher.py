@@ -6,16 +6,12 @@ import logging
 import random
 import shutil
 import re
-from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from logger_config import configure_logging
 from urllib.parse import urlparse
 
 # Configure logging with our central configuration
 logger = configure_logging("fetcher")
-
-# Load environment variables
-load_dotenv()
 
 # Constants
 CACHE_FILE = "cached_data.json"
@@ -34,6 +30,8 @@ API_HEADER_TYPE = os.getenv("API_HEADER_TYPE", "Bearer").lower()
 DEFAULT_CONFIG = {
     "fetch_interval_seconds": 300,  # Cache refresh interval (5 minutes)
     "rate_limit_enabled": True,
+    "test_mode": False,
+    "api_header_type": "bearer",
     # If rate limiting is enabled, use the fetch interval by default
     # This simplifies configuration by using one value for both by default
 }
@@ -48,78 +46,54 @@ DEFAULT_STATE = {
 }
 
 def load_config():
-    """Load configuration primarily from environment variables, falling back to defaults"""
+    """Load configuration from config.json, with defaults where necessary"""
     # Start with default configuration
     config = DEFAULT_CONFIG.copy()
     
-    # If config.json exists, load it as a fallback, but environment variables will override it
+    # If config.json exists, load it
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, 'r') as f:
                 saved_config = json.load(f)
-                # Update config with saved values, but env vars will override these
+                # Update config with saved values
                 config.update(saved_config)
-                logger.debug(f"Loaded fallback configuration from {CONFIG_FILE}")
+                logger.debug(f"Loaded configuration from {CONFIG_FILE}")
         except Exception as e:
             logger.error(f"Error loading config file: {e}")
+    else:
+        logger.warning(f"No {CONFIG_FILE} found. Using default configuration.")
     
-    # Store sensitive data in memory only, not in config.json
-    runtime_config = config.copy()
+    # If certain required configurations are missing, use defaults and log warnings
+    if "endpoint_url" not in config:
+        logger.warning("No endpoint_url found in config.json. Using default endpoint.")
+        config["endpoint_url"] = "https://api.example.com/v1/data"
     
-    # API endpoint is a required configuration - without it, the app can't function
-    if "ENDPOINT_URL" in os.environ:
-        endpoint_url = os.getenv("ENDPOINT_URL")
-        runtime_config["api_endpoint"] = endpoint_url
-        logger.debug(f"Setting api_endpoint from environment: {endpoint_url}")
-    elif "api_endpoint" not in runtime_config:
-        # If we don't have an endpoint URL, set a default but log a warning
-        logger.warning("No ENDPOINT_URL found in environment. Please set ENDPOINT_URL in .env file.")
-        runtime_config["api_endpoint"] = "https://api.example.com/v1/data"
+    if "api_description" not in config:
+        config["api_description"] = "API"
     
-    # API description is optional - use a default if not provided
-    if "API_DESCRIPTION" in os.environ:
-        api_description = os.getenv("API_DESCRIPTION")
-        runtime_config["api_description"] = api_description
-        logger.debug(f"Setting api_description from environment: {api_description}")
-    elif "api_description" not in runtime_config:
-        runtime_config["api_description"] = "API"
+    # For backwards compatibility, support uppercase keys for critical config
+    # and ensure keys are standardized to lowercase
+    for key in list(config.keys()):
+        if key.upper() in config and key.lower() not in config:
+            config[key.lower()] = config[key.upper()]
     
-    # Optional configuration from environment variables
-    if "FETCH_INTERVAL_SECONDS" in os.environ:
-        try:
-            fetch_interval = int(os.getenv("FETCH_INTERVAL_SECONDS"))
-            config["fetch_interval_seconds"] = fetch_interval
-            runtime_config["fetch_interval_seconds"] = fetch_interval
-            logger.debug(f"Setting fetch_interval_seconds from environment: {fetch_interval}")
-        except (ValueError, TypeError) as e:
-            logger.error(f"Invalid FETCH_INTERVAL_SECONDS in environment: {e}")
+    # Ensure we're working with standardized keys for existing entries
+    if "api_endpoint" in config and "endpoint_url" not in config:
+        config["endpoint_url"] = config["api_endpoint"]
     
-    if "RATE_LIMIT_ENABLED" in os.environ:
-        rate_limit = os.getenv("RATE_LIMIT_ENABLED", "true").lower() in ("true", "1", "yes")
-        config["rate_limit_enabled"] = rate_limit
-        runtime_config["rate_limit_enabled"] = rate_limit
-        logger.debug(f"Setting rate_limit_enabled from environment: {rate_limit}")
-
-    # Load response logging filter configuration
-    if "LOG_RESPONSE_FILTER" in os.environ and os.getenv("LOG_RESPONSE_FILTER").strip():
-        log_filter = os.getenv("LOG_RESPONSE_FILTER").strip()
-        runtime_config["log_response_filter"] = log_filter
-        logger.debug(f"Setting log_response_filter from environment: {log_filter}")
+    # Set test mode from config
+    global TEST_MODE
+    TEST_MODE = config.get("test_mode", False)
     
-    # Save the public configuration to config.json for reference/fallback
-    # Exclude sensitive data like API endpoints
+    # Save an updated version of the config
     try:
-        # Create a sanitized copy for storage - remove sensitive fields
-        safe_config = {k: v for k, v in config.items() 
-                      if k not in ["api_endpoint", "api_description", "API_KEY"]}
-        
         with open(CONFIG_FILE, 'w') as f:
-            json.dump(safe_config, f, indent=2)
-        logger.debug(f"Saved safe configuration to {CONFIG_FILE}")
+            json.dump(config, f, indent=2)
+        logger.debug(f"Saved configuration to {CONFIG_FILE}")
     except Exception as e:
         logger.error(f"Error saving config file: {e}")
     
-    return runtime_config
+    return config
 
 def load_state():
     """Load state from state file or create with defaults if it doesn't exist"""

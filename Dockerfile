@@ -13,11 +13,7 @@ COPY . .
 RUN useradd -m appuser
 USER appuser
 
-# Default environment variable (can be overridden at runtime)
-ENV PORT=8000
-ENV TEST_MODE=false
-
-# Expose the port for the API
+# Expose the port for the API (default, can be changed in config.json)
 EXPOSE 8000
 
 # Use a proper entry point script

@@ -17,19 +17,20 @@ This approach solves API rate limiting issues during development and provides un
    ```bash
    ./start.sh
    ```
-3. Edit the `.env` file with your API endpoint:
-   ```
-   ENDPOINT_URL=https://your-api-endpoint.com/data
+3. Edit the `config.json` file with your API endpoint:
+   ```json
+   {
+     "endpoint_url": "https://your-api-endpoint.com/data",
+     "fetch_interval_seconds": 300,
+     "rate_limit_enabled": true
+   }
    ```
 4. Access your cached data at:
    ```
    http://localhost:8000/data
    ```
    
-   Note: The default port is 8000, but you can change it by setting the PORT environment variable:
-   ```bash
-   PORT=3000 ./start.sh
-   ```
+   Note: The default port is 8000, but you can change it in the config.json file.
 
 ## Architecture
 
@@ -49,7 +50,7 @@ This approach solves API rate limiting issues during development and provides un
 - **Configuration**:
   - `env.example`: Template for environment variables
   - `.env`: Your actual environment variables (not tracked in git)
-  - `config.json`: Runtime configuration (can be modified via API)
+  - `config.json`: Your actual configuration settings (not tracked in git)
   - `config.example.json`: Example configuration structure (for reference)
   
 - **Data Files**:
@@ -71,23 +72,20 @@ This approach solves API rate limiting issues during development and provides un
 ## Setup
 
 1. Clone this repository
-2. Create a `.env` file based on the `env.example` template:
+2. Create a `config.json` file based on the `config.example.json` template:
 
     ```bash
-    cp env.example .env
+    cp config.example.json config.json
     ```
 
-3. Edit the `.env` file with your configuration:
+3. Edit the `config.json` file with your configuration:
 
-    ```
-    # For APIs requiring authentication (or leave commented out if none needed)
-    # API_KEY=your_api_key_here
-    
-    # Required: Your API endpoint URL
-    ENDPOINT_URL=https://your-api-endpoint.com/v1/data
-    
-    # Optional: Change the API server port (default: 8000)
-    PORT=8000
+    ```json
+    {
+      "endpoint_url": "https://your-api-endpoint.com/v1/data",
+      "port": 8000,
+      "fetch_interval_seconds": 300
+    }
     ```
 
 4. Install dependencies:
@@ -98,59 +96,36 @@ This approach solves API rate limiting issues during development and provides un
 
 ## Configuration
 
-All configuration is managed through environment variables in the `.env` file. No need to manually edit any JSON files!
+All configuration is managed through the `config.json` file. Each instance of the application can have its own configuration file.
 
 ### Basic Configuration
 
-```
-# API Configuration
-# For APIs requiring authentication (uncomment if needed):
-# API_KEY=your_api_key_here
-
-# API header style for authentication (default: bearer)
-# Options: bearer, basic, x-access-token, or any custom header name
-# API_HEADER_TYPE=bearer
-
-# Required: Your API endpoint URL
-ENDPOINT_URL=https://your-api-endpoint.com/v1/data
-
-# Server configuration
-PORT=8000  # Default API server port
-```
-
-### Advanced Configuration
-
-```
-# API description for logs and status
-API_DESCRIPTION=My Weather API
-
-# API header configuration
-API_HEADER_TYPE=bearer  # Options: bearer, basic, x-access-token, or custom header name
-
-# Logging configuration
-LOG_LEVEL=INFO  # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
-LOG_RESPONSE_FILTER=data.metadata.version  # Extract specific parts of API responses for logging
-
-# Fetcher configuration 
-TEST_MODE=false  # Set to true to generate test data
-FETCH_INTERVAL_SECONDS=300  # Cache refresh interval (5 min)
-
-# Rate limiting
-RATE_LIMIT_ENABLED=true
-# The following is optional - if not set, the fetch interval will be used
-MIN_TIME_BETWEEN_API_CALLS_SECONDS=300
-```
-
-The application saves your configuration to `config.json` for reference, but this file should not be committed to your repository (it's in the `.gitignore`).
-
-For reference, here's the default configuration structure (also available in `config.example.json`):
-
 ```json
 {
+  "endpoint_url": "https://your-api-endpoint.com/v1/data",
+  "port": 8000,
   "fetch_interval_seconds": 300,
   "rate_limit_enabled": true
 }
 ```
+
+### Advanced Configuration
+
+```json
+{
+  "endpoint_url": "https://your-api-endpoint.com/v1/data",
+  "api_description": "My Weather API",
+  "api_header_type": "bearer",
+  "port": 8000,
+  "log_level": "INFO",
+  "log_response_filter": "data.metadata.version",
+  "test_mode": false,
+  "fetch_interval_seconds": 300,
+  "rate_limit_enabled": true
+}
+```
+
+For reference, a template configuration structure is available in `config.example.json`.
 
 #### About Cache Refresh and Rate Limiting
 
@@ -159,56 +134,47 @@ The application uses two key settings to control how often it refreshes data:
 1. **fetch_interval_seconds**: How often the service attempts to refresh its cache (e.g., every 5 minutes)
 2. **rate_limit_enabled**: Whether to enforce rate limiting on API calls (default: true)
 
-When rate limiting is enabled but no `min_time_between_api_calls_seconds` is specified, the fetch interval is used for rate limiting as well. This simplifies configuration by allowing you to set just one interval.
-
-If you need more control, you can explicitly set `min_time_between_api_calls_seconds` to a different value than your fetch interval. This is useful for APIs with strict rate limits.
-
-These settings control the caching behavior and rate limiting. Your API endpoint and other settings should be defined in your `.env` file, not in config.json.
+When rate limiting is enabled, the fetch interval is used for rate limiting as well. This simplifies configuration by allowing you to set just one interval.
 
 #### API Authentication Header Options
 
-Different APIs require different authentication header formats. The `API_HEADER_TYPE` setting allows you to configure how your API key is sent with requests:
+Different APIs require different authentication header formats. The `api_header_type` setting allows you to configure how your API key is sent with requests:
 
 1. **bearer** (default): Sends the API key as `Authorization: Bearer your_api_key`
 2. **basic**: Sends the API key as `Authorization: Basic your_api_key`
 3. **x-access-token**: Sends the API key as `x-access-token: your_api_key`
-4. **custom header name**: Uses the value directly as the header name (e.g., if you set `API_HEADER_TYPE=api-key`, it will use `api-key: your_api_key`)
+4. **custom header name**: Uses the value directly as the header name (e.g., if you set `api_header_type=api-key`, it will use `api-key: your_api_key`)
 
 Example for an API using custom token headers:
-```
-API_KEY=your_api_key
-API_HEADER_TYPE=x-access-token
+```json
+{
+  "api_key": "your_api_key",
+  "api_header_type": "x-access-token"
+}
 ```
 
 Example for a typical JWT-based API:
+```json
+{
+  "api_key": "your_jwt_token",
+  "api_header_type": "bearer"
+}
 ```
-API_KEY=your_jwt_token
-API_HEADER_TYPE=bearer
-```
-
-#### Security Considerations
-
-For security reasons, sensitive information like your API endpoint URL is:
-- Stored only in your `.env` file, not in config.json
-- Kept in memory during runtime, not written to any configuration files
-- Never committed to the repository (both `.env` and `config.json` are in .gitignore)
-
-This approach prevents accidentally exposing your API keys or endpoints in your version control system.
 
 #### Response Logging Filter
 
-The `LOG_RESPONSE_FILTER` option allows you to extract and log specific parts of API responses without flooding your logs with the entire response body. This is particularly useful for debugging or monitoring specific data points.
+The `log_response_filter` option allows you to extract and log specific parts of API responses without flooding your logs with the entire response body. This is particularly useful for debugging or monitoring specific data points.
 
 You can use two types of filters:
 
 1. **JSON path**: Extract a specific field using dot notation
-   ```
-   LOG_RESPONSE_FILTER=data.items.0.id
+   ```json
+   { "log_response_filter": "data.items.0.id" }
    ```
 
 2. **Regex pattern**: Extract using a regular expression
-   ```
-   LOG_RESPONSE_FILTER="id":"([^"]+)"
+   ```json
+   { "log_response_filter": "\"id\":\"([^\"]+)\"" }
    ```
 
 Examples:

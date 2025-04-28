@@ -4,24 +4,10 @@ services:
   json-cacher:
     build: .
     ports:
-      - "${PORT:-8000}:${CONTAINER_PORT:-8000}"
-    environment:
-      # API Configuration
-      # Uncomment if your API requires authentication:
-      # - API_KEY=${API_KEY}
-      - ENDPOINT_URL=${ENDPOINT_URL:-https://api.example.com/v1/data}
-      - API_DESCRIPTION=${API_DESCRIPTION:-External API}
-      
-      # Server configuration
-      - PORT=${CONTAINER_PORT:-8000}
-      
-      # Fetcher configuration
-      - TEST_MODE=${TEST_MODE:-false}
-      - FETCH_INTERVAL_SECONDS=${FETCH_INTERVAL_SECONDS:-300}
-      
-      # Rate limiting (uses FETCH_INTERVAL_SECONDS)
-      - RATE_LIMIT_ENABLED=${RATE_LIMIT_ENABLED:-true}
+      - "8000:8000"
     volumes:
+      # Mount config.json for configuration
+      - ./config.json:/app/config.json
       # Mount cache for persistence between restarts
       - ./data:/app/data
     restart: unless-stopped 
