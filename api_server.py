@@ -5,7 +5,11 @@ import time
 from datetime import datetime
 from flask import Flask, jsonify, request, redirect
 from flask_cors import CORS
+from dotenv import load_dotenv
 from logger_config import configure_logging
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Configure logging with our central configuration
 logger = configure_logging("api_server")

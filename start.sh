@@ -90,7 +90,7 @@ if [ ! -f "$SCRIPT_DIR/config.json" ] && [ -f "$SCRIPT_DIR/config.example.json" 
 fi
 
 # Environment variables with defaults
-export PORT=${PORT:-8000}  # Default port for API server
+export PORT=${PORT:-8001}  # Default port for API server
 export TEST_MODE=${TEST_MODE:-false}
 export LOG_LEVEL=${LOG_LEVEL:-INFO}  # Default log level
 
