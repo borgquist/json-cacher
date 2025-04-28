@@ -127,6 +127,10 @@ API_DESCRIPTION=My Weather API
 # API header configuration
 API_HEADER_TYPE=bearer  # Options: bearer, basic, x-access-token, or custom header name
 
+# Logging configuration
+LOG_LEVEL=INFO  # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+LOG_RESPONSE_FILTER=data.metadata.version  # Extract specific parts of API responses for logging
+
 # Fetcher configuration 
 TEST_MODE=false  # Set to true to generate test data
 FETCH_INTERVAL_SECONDS=300  # Cache refresh interval (5 min)
@@ -190,6 +194,29 @@ For security reasons, sensitive information like your API endpoint URL is:
 - Never committed to the repository (both `.env` and `config.json` are in .gitignore)
 
 This approach prevents accidentally exposing your API keys or endpoints in your version control system.
+
+#### Response Logging Filter
+
+The `LOG_RESPONSE_FILTER` option allows you to extract and log specific parts of API responses without flooding your logs with the entire response body. This is particularly useful for debugging or monitoring specific data points.
+
+You can use two types of filters:
+
+1. **JSON path**: Extract a specific field using dot notation
+   ```
+   LOG_RESPONSE_FILTER=data.items.0.id
+   ```
+
+2. **Regex pattern**: Extract using a regular expression
+   ```
+   LOG_RESPONSE_FILTER="id":"([^"]+)"
+   ```
+
+Examples:
+- `data.metadata.version` - Extract the version field from the metadata object
+- `items[0].status` - Get the status of the first item in the items array
+- `"total_count":(\d+)` - Extract the total count value using a regex pattern
+
+The filtered results will appear in your logs, making it easier to track specific data points without needing to inspect the entire response.
 
 ## Running the Service
 

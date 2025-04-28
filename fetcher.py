@@ -5,6 +5,7 @@ import os
 import logging
 import random
 import shutil
+import re
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from logger_config import configure_logging
@@ -98,6 +99,12 @@ def load_config():
         config["rate_limit_enabled"] = rate_limit
         runtime_config["rate_limit_enabled"] = rate_limit
         logger.debug(f"Setting rate_limit_enabled from environment: {rate_limit}")
+
+    # Load response logging filter configuration
+    if "LOG_RESPONSE_FILTER" in os.environ and os.getenv("LOG_RESPONSE_FILTER").strip():
+        log_filter = os.getenv("LOG_RESPONSE_FILTER").strip()
+        runtime_config["log_response_filter"] = log_filter
+        logger.debug(f"Setting log_response_filter from environment: {log_filter}")
     
     # Save the public configuration to config.json for reference/fallback
     # Exclude sensitive data like API endpoints
@@ -228,6 +235,49 @@ def create_backup(data):
     except Exception as e:
         logger.error(f"Failed to create backup: {e}")
 
+def extract_filtered_response(data, filter_pattern):
+    """
+    Extract parts of the response using the filter pattern.
+    
+    Args:
+        data: The JSON data from the API response
+        filter_pattern: A string that can be a JSON path or a regex pattern
+        
+    Returns:
+        Extracted information from the response
+    """
+    if not filter_pattern:
+        return None
+    
+    try:
+        # Convert the data to a JSON string
+        data_str = json.dumps(data)
+        
+        # Check if it's a JSON path (contains dots but no regex special chars)
+        if '.' in filter_pattern and not any(c in filter_pattern for c in '[](){}*+?^$|\\.'):
+            # Handle as JSON path
+            path_parts = filter_pattern.split('.')
+            result = data
+            for part in path_parts:
+                if part in result:
+                    result = result[part]
+                else:
+                    return f"JSON path '{filter_pattern}' not found in response"
+            return f"{filter_pattern}: {json.dumps(result)}"
+        else:
+            # Handle as regex
+            try:
+                pattern = re.compile(filter_pattern)
+                matches = pattern.findall(data_str)
+                if matches:
+                    return f"Regex matches for '{filter_pattern}': {matches}"
+                else:
+                    return f"No matches for regex '{filter_pattern}' in response"
+            except re.error:
+                return f"Invalid regex pattern: {filter_pattern}"
+    except Exception as e:
+        return f"Error extracting filtered response: {e}"
+
 def fetch_and_cache(config, state):
     """Fetch data from the configured API endpoint and cache it"""
     # If in test mode, generate sample data
@@ -313,6 +363,12 @@ def fetch_and_cache(config, state):
                 if response.status_code == 200:
                     # Successfully fetched data
                     data = response.json()
+                    
+                    # Apply response filter for logging if configured
+                    if "log_response_filter" in config and config["log_response_filter"]:
+                        filtered_response = extract_filtered_response(data, config["log_response_filter"])
+                        if filtered_response:
+                            logger.info(f"Response filter result: {filtered_response}")
                     
                     # Check if this data is different from what we already have
                     data_changed = True
