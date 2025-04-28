@@ -107,6 +107,10 @@ All configuration is managed through environment variables in the `.env` file. N
 # For APIs requiring authentication (uncomment if needed):
 # API_KEY=your_api_key_here
 
+# API header style for authentication (default: bearer)
+# Options: bearer, basic, x-access-token, or any custom header name
+# API_HEADER_TYPE=bearer
+
 # Required: Your API endpoint URL
 ENDPOINT_URL=https://your-api-endpoint.com/v1/data
 
@@ -119,6 +123,9 @@ PORT=8000  # Default API server port
 ```
 # API description for logs and status
 API_DESCRIPTION=My Weather API
+
+# API header configuration
+API_HEADER_TYPE=bearer  # Options: bearer, basic, x-access-token, or custom header name
 
 # Fetcher configuration 
 TEST_MODE=false  # Set to true to generate test data
@@ -153,6 +160,27 @@ When rate limiting is enabled but no `min_time_between_api_calls_seconds` is spe
 If you need more control, you can explicitly set `min_time_between_api_calls_seconds` to a different value than your fetch interval. This is useful for APIs with strict rate limits.
 
 These settings control the caching behavior and rate limiting. Your API endpoint and other settings should be defined in your `.env` file, not in config.json.
+
+#### API Authentication Header Options
+
+Different APIs require different authentication header formats. The `API_HEADER_TYPE` setting allows you to configure how your API key is sent with requests:
+
+1. **bearer** (default): Sends the API key as `Authorization: Bearer your_api_key`
+2. **basic**: Sends the API key as `Authorization: Basic your_api_key`
+3. **x-access-token**: Sends the API key as `x-access-token: your_api_key`
+4. **custom header name**: Uses the value directly as the header name (e.g., if you set `API_HEADER_TYPE=api-key`, it will use `api-key: your_api_key`)
+
+Example for an API using custom token headers:
+```
+API_KEY=your_api_key
+API_HEADER_TYPE=x-access-token
+```
+
+Example for a typical JWT-based API:
+```
+API_KEY=your_jwt_token
+API_HEADER_TYPE=bearer
+```
 
 #### Security Considerations
 
@@ -245,4 +273,6 @@ Content-Type: application/json
 
 ### Get the backup data
 
+```
+GET http://localhost:8000/backup
 ```

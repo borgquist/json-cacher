@@ -27,6 +27,7 @@ RETRY_DELAY = 10  # seconds
 
 # API authentication (from environment)
 API_KEY = os.getenv("API_KEY")
+API_HEADER_TYPE = os.getenv("API_HEADER_TYPE", "Bearer").lower()
 
 # Default configuration values
 DEFAULT_CONFIG = {
@@ -289,10 +290,18 @@ def fetch_and_cache(config, state):
         # Check if we have an API key for authentication
         headers = {}
         if API_KEY:
-            # Different APIs use different header names for API keys
-            # We'll use the common Authorization header, but this might need to be adjusted
-            headers["Authorization"] = f"Bearer {API_KEY}"
-            logger.debug("Using API key for authentication")
+            # Handle different API header formats based on API_HEADER_TYPE env var
+            if API_HEADER_TYPE == "bearer":
+                headers["Authorization"] = f"Bearer {API_KEY}"
+            elif API_HEADER_TYPE == "basic":
+                headers["Authorization"] = f"Basic {API_KEY}"
+            elif API_HEADER_TYPE == "x-access-token":
+                headers["x-access-token"] = API_KEY
+            else:
+                # For custom header formats or just to pass the API key as-is
+                headers[API_HEADER_TYPE] = API_KEY
+            
+            logger.debug(f"Using API key with header type: {API_HEADER_TYPE}")
         else:
             logger.debug("No API_KEY found in environment variables. Proceeding without authentication.")
         
