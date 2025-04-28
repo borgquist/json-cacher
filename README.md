@@ -48,8 +48,6 @@ This approach solves API rate limiting issues during development and provides un
   - `api_server.py`: API endpoint server
   
 - **Configuration**:
-  - `env.example`: Template for environment variables
-  - `.env`: Your actual environment variables (not tracked in git)
   - `config.json`: Your actual configuration settings (not tracked in git)
   - `config.example.json`: Example configuration structure (for reference)
   
@@ -178,6 +176,7 @@ You can use two types of filters:
    ```
 
 Examples:
+- `current.pm25.aqius` - Extract the PM2.5 Air Quality Index value
 - `data.metadata.version` - Extract the version field from the metadata object
 - `items[0].status` - Get the status of the first item in the items array
 - `"total_count":(\d+)` - Extract the total count value using a regex pattern
@@ -211,7 +210,7 @@ The script automatically:
 - Detects whether to use `python` or `python3` on your system
 - Creates and activates a virtual environment if one doesn't exist
 - Installs required dependencies if they're missing
-- Creates `.env` and `config.json` from examples if they don't exist
+- Creates `config.json` from `config.example.json` if it doesn't exist
 - Runs both the fetcher and API server
 - Adapts to different environments (local, server, Docker)
 
