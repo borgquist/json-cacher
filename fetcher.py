@@ -391,9 +391,9 @@ def calculate_next_run_time(config, state):
         last_call_time = state.get("last_api_call_timestamp", 0)
         time_since_last_call = time.time() - last_call_time
         
-        # Use fetch_interval for rate limiting
+        # Calculate remaining time until we reach fetch_interval since last call
         if time_since_last_call < fetch_interval:
-            return max(fetch_interval, fetch_interval - time_since_last_call)
+            return fetch_interval - time_since_last_call
     
     return fetch_interval
 
