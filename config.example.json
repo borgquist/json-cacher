@@ -1,11 +1,15 @@
 {
+  "endpoint_url": "https://api.example.com/v1/data",
+  "api_key": "",
+  "api_header_type": "",
+  "api_description": "My API",
+  
+  "port": 8000,
+  
   "fetch_interval_seconds": 300,
   "rate_limit_enabled": true,
-  "port": 8000,
-  "endpoint_url": "https://api.example.com/v1/data",
-  "api_description": "My API",
-  "api_header_type": "bearer",
   "test_mode": false,
+  
   "log_level": "INFO",
   "log_response_filter": ""
 } 

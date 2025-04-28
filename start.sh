@@ -66,7 +66,7 @@ else
 fi
 
 # Check for requirements and install if necessary
-if ! $PYTHON_CMD -c "import requests" 2>/dev/null || ! $PYTHON_CMD -c "import flask" 2>/dev/null || ! $PYTHON_CMD -c "import dotenv" 2>/dev/null; then
+if ! $PYTHON_CMD -c "import requests" 2>/dev/null || ! $PYTHON_CMD -c "import flask" 2>/dev/null; then
     echo "Some dependencies are missing. Installing requirements..."
     $PYTHON_CMD -m pip install -r "$SCRIPT_DIR/requirements.txt"
     if [ $? -ne 0 ]; then

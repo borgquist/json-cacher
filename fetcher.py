@@ -18,13 +18,8 @@ CACHE_FILE = "cached_data.json"
 STATE_FILE = "fetcher_state.json"
 CONFIG_FILE = "config.json"
 BACKUP_FILE = "last_successful_response.json"
-TEST_MODE = os.getenv("TEST_MODE", "false").lower() == "true"
 MAX_RETRIES = 3
 RETRY_DELAY = 10  # seconds
-
-# API authentication (from environment)
-API_KEY = os.getenv("API_KEY")
-API_HEADER_TYPE = os.getenv("API_HEADER_TYPE", "Bearer").lower()
 
 # Default configuration values
 DEFAULT_CONFIG = {
@@ -32,6 +27,7 @@ DEFAULT_CONFIG = {
     "rate_limit_enabled": True,
     "test_mode": False,
     "api_header_type": "bearer",
+    "api_key": "",
     # If rate limiting is enabled, use the fetch interval by default
     # This simplifies configuration by using one value for both by default
 }
@@ -80,10 +76,6 @@ def load_config():
     # Ensure we're working with standardized keys for existing entries
     if "api_endpoint" in config and "endpoint_url" not in config:
         config["endpoint_url"] = config["api_endpoint"]
-    
-    # Set test mode from config
-    global TEST_MODE
-    TEST_MODE = config.get("test_mode", False)
     
     # Save an updated version of the config
     try:
@@ -145,7 +137,7 @@ def update_api_call_timestamp(state):
 
 def generate_sample_data():
     """Generate sample JSON data for testing"""
-    logger.info("Generating sample data in TEST_MODE")
+    logger.info("Generating sample data in test mode")
     
     # Current timestamp
     now = datetime.now()
@@ -254,8 +246,11 @@ def extract_filtered_response(data, filter_pattern):
 
 def fetch_and_cache(config, state):
     """Fetch data from the configured API endpoint and cache it"""
+    # Get test mode from config
+    test_mode = config.get("test_mode", False)
+    
     # If in test mode, generate sample data
-    if TEST_MODE:
+    if test_mode:
         data = generate_sample_data()
         
         # Add metadata
@@ -284,15 +279,11 @@ def fetch_and_cache(config, state):
     if can_call_api(config, state):
         update_api_call_timestamp(state)
         
-        # Get API endpoint URL from config - runtime_config includes sensitive data
-        api_endpoint = config.get("api_endpoint")
-        
-        # Fallback to environment variable if not in config
-        if not api_endpoint and "ENDPOINT_URL" in os.environ:
-            api_endpoint = os.getenv("ENDPOINT_URL")
+        # Get API endpoint URL from config
+        api_endpoint = config.get("endpoint_url")
         
         if not api_endpoint:
-            logger.error("No API endpoint configured. Please set ENDPOINT_URL in .env file.")
+            logger.error("No API endpoint configured in config.json.")
             return False
             
         # Mask the API endpoint for logging by showing only domain or first part
@@ -313,21 +304,24 @@ def fetch_and_cache(config, state):
         
         # Check if we have an API key for authentication
         headers = {}
-        if API_KEY:
-            # Handle different API header formats based on API_HEADER_TYPE env var
-            if API_HEADER_TYPE == "bearer":
-                headers["Authorization"] = f"Bearer {API_KEY}"
-            elif API_HEADER_TYPE == "basic":
-                headers["Authorization"] = f"Basic {API_KEY}"
-            elif API_HEADER_TYPE == "x-access-token":
-                headers["x-access-token"] = API_KEY
+        api_key = config.get("api_key")
+        api_header_type = config.get("api_header_type", "bearer").lower()
+        
+        if api_key:
+            # Handle different API header formats based on api_header_type config
+            if api_header_type == "bearer":
+                headers["Authorization"] = f"Bearer {api_key}"
+            elif api_header_type == "basic":
+                headers["Authorization"] = f"Basic {api_key}"
+            elif api_header_type == "x-access-token":
+                headers["x-access-token"] = api_key
             else:
                 # For custom header formats or just to pass the API key as-is
-                headers[API_HEADER_TYPE] = API_KEY
+                headers[api_header_type] = api_key
             
-            logger.debug(f"Using API key with header type: {API_HEADER_TYPE}")
+            logger.debug(f"Using API key with header type: {api_header_type}")
         else:
-            logger.debug("No API_KEY found in environment variables. Proceeding without authentication.")
+            logger.debug("No API key found in config. Proceeding without authentication.")
         
         # Try to fetch the data with retries
         for attempt in range(MAX_RETRIES):

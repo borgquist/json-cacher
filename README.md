@@ -238,7 +238,7 @@ pm2 startup
 GET http://localhost:8000/data
 ```
 
-The port can be changed by setting the PORT environment variable before starting the service.
+The port can be changed in the config.json file.
 
 ### Check cache and rate limit status
 
