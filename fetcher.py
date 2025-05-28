@@ -28,6 +28,8 @@ DEFAULT_CONFIG = {
     "test_mode": False,
     "api_header_type": "bearer",
     "api_key": "",
+    "connection_failure_threshold": 3,  # Number of consecutive failures before marking as disconnected
+    "request_timeout_seconds": 30,  # HTTP request timeout
     # If rate limiting is enabled, use the fetch interval by default
     # This simplifies configuration by using one value for both by default
 }
@@ -38,7 +40,10 @@ DEFAULT_STATE = {
     "api_calls_count": 0,
     "successful_fetches_count": 0,
     "failed_fetches_count": 0,
-    "last_successful_fetch": None
+    "last_successful_fetch": None,
+    "connection_status": "unknown",  # unknown, connected, disconnected
+    "last_connection_change": None,
+    "consecutive_failures": 0
 }
 
 def load_config():
@@ -111,6 +116,110 @@ def save_state(state):
             json.dump(state, f, indent=2)
     except Exception as e:
         logger.error(f"Error saving state: {e}")
+
+def should_count_as_failure(error_or_status_code):
+    """
+    Determine if an error should count toward disconnection.
+    Some errors are temporary and shouldn't immediately trigger disconnection alerts.
+    """
+    # If it's an HTTP status code
+    if isinstance(error_or_status_code, int):
+        status_code = error_or_status_code
+        # Don't count temporary server issues as immediate failures
+        if status_code in [429, 502, 503, 504]:  # Rate limit, bad gateway, service unavailable, gateway timeout
+            return False
+        # Count client errors and other server errors as failures
+        if status_code >= 400:
+            return True
+        return False
+    
+    # If it's an exception/error string
+    error_str = str(error_or_status_code).lower()
+    
+    # Temporary network issues - don't count immediately
+    temporary_errors = [
+        'timeout',
+        'connection timeout',
+        'read timeout',
+        'temporary failure in name resolution',
+        'network is unreachable',
+        'connection reset by peer',
+        'ssl handshake',
+        'certificate verify failed'
+    ]
+    
+    for temp_error in temporary_errors:
+        if temp_error in error_str:
+            return False
+    
+    # Persistent connection issues - count as failures
+    persistent_errors = [
+        'connection refused',
+        'name or service not known',
+        'no route to host',
+        'host is down',
+        'connection aborted'
+    ]
+    
+    for persistent_error in persistent_errors:
+        if persistent_error in error_str:
+            return True
+    
+    # Default: count unknown errors as failures but log for analysis
+    logger.debug(f"Unknown error type, counting as failure: {error_str}")
+    return True
+
+def update_connection_status(state, is_connected, reason=None, config=None):
+    """Update connection status and track changes"""
+    current_status = state.get("connection_status", "unknown")
+    new_status = "connected" if is_connected else "disconnected"
+    
+    # Get failure threshold from config (default to 3 if not provided)
+    failure_threshold = 3
+    if config:
+        failure_threshold = config.get("connection_failure_threshold", 3)
+    
+    # Get current consecutive failures
+    consecutive_failures = state.get("consecutive_failures", 0)
+    
+    if is_connected:
+        # Immediate connection restoration
+        if current_status != "connected":
+            state["connection_status"] = "connected"
+            state["last_connection_change"] = datetime.now().isoformat()
+            state["consecutive_failures"] = 0
+            logger.info("✅ Connection restored - API is now reachable")
+            # Also print to console for visibility
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            print(f"{timestamp} - FETCHER: ✅ Connection restored - API is now reachable")
+        else:
+            # Already connected, just reset failure count
+            state["consecutive_failures"] = 0
+    else:
+        # Check if this error should count toward disconnection
+        should_count = should_count_as_failure(reason) if reason else True
+        
+        if should_count:
+            # Increment failure count
+            consecutive_failures += 1
+            state["consecutive_failures"] = consecutive_failures
+            
+            # Only mark as disconnected after multiple failures to reduce false positives
+            if consecutive_failures >= failure_threshold and current_status != "disconnected":
+                state["connection_status"] = "disconnected"
+                state["last_connection_change"] = datetime.now().isoformat()
+                logger.warning(f"❌ Connection lost after {consecutive_failures} consecutive failures - API is unreachable. Latest reason: {reason or 'Unknown'}")
+                # Also print to console for visibility
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                print(f"{timestamp} - FETCHER: ❌ Connection lost after {consecutive_failures} consecutive failures - API is unreachable. Latest reason: {reason or 'Unknown'}")
+            elif consecutive_failures < failure_threshold:
+                # Still in grace period - log but don't change status
+                logger.warning(f"⚠️ API call failed ({consecutive_failures}/{failure_threshold}): {reason or 'Unknown'}")
+        else:
+            # Temporary error - don't count toward disconnection
+            logger.info(f"🔄 Temporary API issue (not counting toward disconnection): {reason or 'Unknown'}")
+    
+    save_state(state)
 
 def can_call_api(config, state):
     """Check if we're allowed to call the API based on rate limiting configuration"""
@@ -277,7 +386,8 @@ def fetch_and_cache(config, state):
         # Update state
         state["last_successful_fetch"] = datetime.now().isoformat()
         state["successful_fetches_count"] += 1
-        save_state(state)
+        # Mark connection as connected for test mode
+        update_connection_status(state, True, "Test mode - simulated connection", config)
         
         logger.info(f"Generated test data and cached successfully")
         return True
@@ -333,7 +443,9 @@ def fetch_and_cache(config, state):
         # Try to fetch the data with retries
         for attempt in range(MAX_RETRIES):
             try:
-                response = requests.get(api_endpoint, headers=headers, timeout=30)
+                # Use configurable timeout
+                timeout = config.get("request_timeout_seconds", 30)
+                response = requests.get(api_endpoint, headers=headers, timeout=timeout)
                 
                 if response.status_code == 200:
                     # Successfully fetched data
@@ -390,6 +502,9 @@ def fetch_and_cache(config, state):
                     state["successful_fetches_count"] += 1
                     save_state(state)
                     
+                    # Mark connection as connected
+                    update_connection_status(state, True, "API fetch successful", config)
+                    
                     # Get data size in bytes (approximate by converting to JSON string)
                     data_size = len(json.dumps(data))
                     
@@ -401,11 +516,15 @@ def fetch_and_cache(config, state):
                     return True
                 else:
                     logger.warning(f"API returned non-200 status code: {response.status_code}")
+                    # Mark as disconnected for non-200 responses
+                    update_connection_status(state, False, response.status_code, config)
                     # Don't retry if we get a client error (4xx)
                     if 400 <= response.status_code < 500:
                         break
             except Exception as e:
                 logger.error(f"Error fetching data (attempt {attempt+1}/{MAX_RETRIES}): {e}")
+                # Mark as disconnected on exceptions (network errors, timeouts, etc.)
+                update_connection_status(state, False, e, config)
             
             # If we get here, the attempt failed - wait before retrying
             if attempt < MAX_RETRIES - 1:  # Don't sleep after the last attempt
@@ -415,6 +534,8 @@ def fetch_and_cache(config, state):
         # If we get here, all attempts failed
         state["failed_fetches_count"] += 1
         save_state(state)
+        # Ensure disconnection status is recorded for complete failure
+        update_connection_status(state, False, "All retry attempts failed", config)
         logger.error("Failed to fetch data after all retry attempts")
         return False
     else:

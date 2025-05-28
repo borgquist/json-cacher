@@ -119,7 +119,9 @@ All configuration is managed through the `config.json` file. Each instance of th
   "log_response_filter": "data.metadata.version",
   "test_mode": false,
   "fetch_interval_seconds": 300,
-  "rate_limit_enabled": true
+  "rate_limit_enabled": true,
+  "connection_failure_threshold": 3,
+  "request_timeout_seconds": 30
 }
 ```
 
@@ -182,6 +184,27 @@ Examples:
 - `"total_count":(\d+)` - Extract the total count value using a regex pattern
 
 The filtered results will appear in your logs, making it easier to track specific data points without needing to inspect the entire response.
+
+#### Connection Monitoring
+
+The service includes intelligent connection monitoring with configurable settings to reduce false positives:
+
+**connection_failure_threshold** (default: 3): Number of consecutive failures required before marking the connection as disconnected. This prevents temporary network hiccups from triggering false alarms.
+
+**request_timeout_seconds** (default: 30): HTTP request timeout in seconds. Adjust this based on your API's typical response time.
+
+```json
+{
+  "connection_failure_threshold": 3,
+  "request_timeout_seconds": 30
+}
+```
+
+The system intelligently classifies errors:
+- **Temporary errors** (timeouts, SSL handshakes, rate limiting) don't immediately count toward disconnection
+- **Persistent errors** (connection refused, DNS failures, 4xx/5xx errors) count toward the failure threshold
+
+This ensures you only get notified about genuine connectivity issues, not brief network interruptions.
 
 ## Running the Service
 
@@ -268,3 +291,41 @@ Content-Type: application/json
 ```
 GET http://localhost:8000/backup
 ```
+
+## Real-time Notifications
+
+The JSON Cacher provides real-time notifications about data source connection status changes. This allows your applications to:
+
+- **Detect disconnections** immediately when the data source becomes unreachable
+- **Handle reconnections** when the data source comes back online  
+- **Implement graceful degradation** by switching to cached data during outages
+
+### Quick Start
+
+```javascript
+// Connect to the notification stream
+const eventSource = new EventSource('/events');
+
+// Listen for connection status changes
+eventSource.addEventListener('connection_status_change', function(event) {
+    const data = JSON.parse(event.data);
+    
+    if (data.status === 'disconnected') {
+        console.warn('⚠️ Data source unreachable - using cached data');
+        showOfflineIndicator();
+    } else if (data.status === 'connected') {
+        console.info('✅ Data source reconnected');
+        hideOfflineIndicator();
+        refreshData();
+    }
+});
+```
+
+### Available Endpoints
+
+- **`GET /events`** - Server-Sent Events stream for real-time notifications
+- **`GET /status`** - Includes connection status in the response (for polling)
+
+For complete documentation and examples in multiple languages, see **[NOTIFICATIONS.md](NOTIFICATIONS.md)**.
+
+## Docker Support

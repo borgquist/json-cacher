@@ -2,8 +2,10 @@ import os
 import json
 import logging
 import time
+import threading
+import queue
 from datetime import datetime
-from flask import Flask, jsonify, request, redirect
+from flask import Flask, jsonify, request, redirect, Response
 from flask_cors import CORS
 from logger_config import configure_logging
 
@@ -21,6 +23,72 @@ CORS(app)  # Enable CORS for all routes
 
 # Disable Flask's default logging
 app.logger.disabled = True
+
+# SSE client management
+sse_clients = []
+sse_lock = threading.Lock()
+
+def add_sse_client(client_queue):
+    """Add a new SSE client"""
+    with sse_lock:
+        sse_clients.append(client_queue)
+
+def remove_sse_client(client_queue):
+    """Remove an SSE client"""
+    with sse_lock:
+        if client_queue in sse_clients:
+            sse_clients.remove(client_queue)
+
+def broadcast_notification(event_type, data):
+    """Broadcast a notification to all connected SSE clients"""
+    with sse_lock:
+        disconnected_clients = []
+        for client_queue in sse_clients:
+            try:
+                client_queue.put({
+                    "event": event_type,
+                    "data": data,
+                    "timestamp": datetime.now().isoformat()
+                })
+            except:
+                # Client is disconnected, mark for removal
+                disconnected_clients.append(client_queue)
+        
+        # Remove disconnected clients
+        for client in disconnected_clients:
+            sse_clients.remove(client)
+
+def monitor_connection_status():
+    """Background thread to monitor connection status changes"""
+    last_status = None
+    
+    while True:
+        try:
+            state = load_state()
+            current_status = state.get("connection_status", "unknown")
+            
+            # Check if status changed
+            if last_status is not None and last_status != current_status:
+                # Broadcast the status change
+                broadcast_notification("connection_status_change", {
+                    "status": current_status,
+                    "previous_status": last_status,
+                    "last_change": state.get("last_connection_change"),
+                    "consecutive_failures": state.get("consecutive_failures", 0)
+                })
+                
+                logger.info(f"Broadcasting connection status change: {last_status} -> {current_status}")
+            
+            last_status = current_status
+            time.sleep(2)  # Check every 2 seconds
+            
+        except Exception as e:
+            logger.error(f"Error in connection status monitor: {e}")
+            time.sleep(5)  # Wait longer on error
+
+# Start the background monitoring thread
+monitor_thread = threading.Thread(target=monitor_connection_status, daemon=True)
+monitor_thread.start()
 
 def load_config():
     """Load configuration from config.json"""
@@ -252,7 +320,10 @@ def get_status():
             "api_calls_count": state.get("api_calls_count", 0),
             "successful_fetches_count": state.get("successful_fetches_count", 0),
             "failed_fetches_count": state.get("failed_fetches_count", 0),
-            "last_successful_fetch": state.get("last_successful_fetch")
+            "last_successful_fetch": state.get("last_successful_fetch"),
+            "connection_status": state.get("connection_status", "unknown"),
+            "last_connection_change": state.get("last_connection_change"),
+            "consecutive_failures": state.get("consecutive_failures", 0)
         },
         "config": {
             "fetch_interval_seconds": fetch_interval,
@@ -267,6 +338,55 @@ def get_status():
     }
     
     return jsonify(status)
+
+@app.route('/events')
+def events():
+    """Server-Sent Events endpoint for real-time notifications"""
+    client_ip = request.remote_addr
+    logger.info(f"SSE connection established from client {client_ip}")
+    # Also print to console with timestamp
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"{timestamp} - API: SSE connection established from client {client_ip}")
+    
+    def event_stream():
+        client_queue = queue.Queue()
+        add_sse_client(client_queue)
+        
+        try:
+            # Send initial connection status
+            state = load_state()
+            initial_data = {
+                "status": state.get("connection_status", "unknown"),
+                "last_change": state.get("last_connection_change"),
+                "consecutive_failures": state.get("consecutive_failures", 0)
+            }
+            yield f"event: connection_status\ndata: {json.dumps(initial_data)}\n\n"
+            
+            # Send periodic heartbeats and handle notifications
+            while True:
+                try:
+                    # Check for new notifications (with timeout)
+                    notification = client_queue.get(timeout=30)
+                    event_name = notification["event"]
+                    event_data = json.dumps(notification["data"])
+                    yield f"event: {event_name}\ndata: {event_data}\n\n"
+                except queue.Empty:
+                    # Send heartbeat to keep connection alive
+                    yield f"event: heartbeat\ndata: {json.dumps({'timestamp': datetime.now().isoformat()})}\n\n"
+                except:
+                    # Client disconnected
+                    break
+        finally:
+            remove_sse_client(client_queue)
+            logger.info(f"SSE connection closed for client {client_ip}")
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            print(f"{timestamp} - API: SSE connection closed for client {client_ip}")
+    
+    return Response(event_stream(), mimetype='text/event-stream',
+                   headers={'Cache-Control': 'no-cache',
+                           'Connection': 'keep-alive',
+                           'Access-Control-Allow-Origin': '*',
+                           'Access-Control-Allow-Headers': 'Cache-Control'})
 
 @app.route('/config', methods=['GET', 'POST'])
 def manage_config():
